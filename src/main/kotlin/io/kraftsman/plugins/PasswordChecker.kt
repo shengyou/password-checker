@@ -45,8 +45,14 @@ fun Application.configurePasswordChecker() {
         post("/api/v1/passwords/hacked") {
             val hackedPassword = call.receive<HackedPassword>()
             transaction {
-                Password.new {
-                    password = hackedPassword.password
+                val foundPasswords = Password.find {
+                    Passwords.password eq hackedPassword.password
+                }.sortedBy { it.id }
+
+                if (foundPasswords.isEmpty()) {
+                    Password.new {
+                        password = hackedPassword.password
+                    }
                 }
             }
 
@@ -70,7 +76,7 @@ fun Application.configurePasswordChecker() {
             call.respond(
                 InspectResult(
                     result,
-                    if (result) "Password hacked" else "Password not hacked"
+                    if (result) "Password hacked" else "Password is safe"
                 )
             )
         }
