@@ -1,27 +1,78 @@
 package io.kraftsman.plugins
 
+import io.kraftsman.dtos.HackedPassword
 import io.kraftsman.dtos.InspectResult
 import io.kraftsman.dtos.Inspection
+import io.kraftsman.entities.Password
+import io.kraftsman.tables.Passwords
 import io.ktor.serialization.*
 import io.ktor.features.*
 import io.ktor.application.*
+import io.ktor.http.*
 import io.ktor.response.*
 import io.ktor.request.*
 import io.ktor.routing.*
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.transactions.transaction
 
 fun Application.configurePasswordChecker() {
     install(ContentNegotiation) {
         json()
     }
 
+    Database.connect(
+        url = "jdbc:h2:mem:password-checker;DB_CLOSE_DELAY=-1",
+        driver = "org.h2.Driver"
+    )
+
+    transaction {
+        SchemaUtils.create(Passwords)
+    }
+
     routing {
 
-        post("/api/v1/inspection") {
+        get("/api/v1/passwords") {
+            val passwords: List<String> = transaction {
+                Password.all().map {
+                    it.password
+                }
+            }
 
+            call.respond(mapOf("hacked-password" to passwords))
+        }
+
+        post("/api/v1/passwords/hacked") {
+            val hackedPassword = call.receive<HackedPassword>()
+            transaction {
+                Password.new {
+                    password = hackedPassword.password
+                }
+            }
+
+            call.respondText(
+                text = "{\n  \"message\": \"Hacked password stored.\"\n}",
+                contentType = ContentType.Application.Json,
+                status = HttpStatusCode.Created,
+            )
+        }
+
+        post("/api/v1/passwords/inspection") {
             val inspection = call.receive<Inspection>()
-            val result = InspectResult(false, inspection.password)
+            val result = transaction {
+                val foundPasswords = Password.find {
+                    Passwords.password eq inspection.password
+                }.sortedBy { it.id }
 
-            call.respond(result)
+                return@transaction foundPasswords.isNotEmpty()
+            }
+
+            call.respond(
+                InspectResult(
+                    result,
+                    if (result) "Password hacked" else "Password not hacked"
+                )
+            )
         }
     }
 }
