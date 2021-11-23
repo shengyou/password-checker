@@ -1,8 +1,8 @@
 package io.kraftsman.plugins
 
 import io.kraftsman.dtos.HackedPassword
-import io.kraftsman.dtos.InspectResult
-import io.kraftsman.dtos.Inspection
+import io.kraftsman.dtos.InspectRequest
+import io.kraftsman.dtos.InspectResponse
 import io.kraftsman.entities.Password
 import io.kraftsman.tables.Passwords
 import io.ktor.serialization.*
@@ -64,21 +64,18 @@ fun Application.configurePasswordChecker() {
         }
 
         post("/api/v1/passwords/inspection") {
-            val inspection = call.receive<Inspection>()
+            val request = call.receive<InspectRequest>()
             val result = transaction {
-                val foundPasswords = Password.find {
-                    Passwords.password eq inspection.password
-                }.sortedBy { it.id }
-
-                return@transaction foundPasswords.isNotEmpty()
+                val hackedPasswords = Password.find {
+                    Passwords.password eq request.password
+                }.toList()
+                return@transaction hackedPasswords.isNotEmpty()
             }
 
-            call.respond(
-                InspectResult(
-                    result,
-                    if (result) "Password hacked" else "Password is safe"
-                )
-            )
+            call.respond(InspectResponse(
+                result = result,
+                message = if (result) "Password Hacked" else "Password Safe"
+            ))
         }
     }
 }
